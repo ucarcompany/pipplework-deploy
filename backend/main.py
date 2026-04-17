@@ -142,63 +142,23 @@ async def serve_model_file(model_id: str):
 
 @app.get("/api/debug/test-printables/{source_model_id}")
 async def debug_test_printables(source_model_id: str):
-    """Test Printables file extraction for a specific model ID.
-    This helps diagnose why file downloads fail."""
+    """Test Printables file extraction for a specific model ID."""
     crawler = PrintablesCrawler()
     try:
-        # Test model page
-        result = await crawler.fetch(f"https://www.printables.com/model/{source_model_id}")
-        page_info = {
-            "status": result.data.status_code if result.success else "failed",
-            "length": len(result.data.text) if result.success else 0,
-        }
+        # Test GraphQL file ID query
+        stl_items = crawler._query_stl_ids(source_model_id)
 
-        # Extract Svelte data summary
-        svelte_info = {}
-        if result.success:
-            import re as _re
-            for m in _re.finditer(r'<script[^>]*>(.*?)</script>', result.data.text, _re.DOTALL):
-                script = m.group(1)
-                if '"body"' in script and len(script) > 200:
-                    try:
-                        env = json.loads(script)
-                        body_str = env.get("body", "")
-                        if isinstance(body_str, str) and body_str:
-                            body = json.loads(body_str)
-                            model = body.get("data", {}).get("model", {})
-                            if model and model.get("id"):
-                                svelte_info = {
-                                    "model_id": model.get("id"),
-                                    "name": model.get("name"),
-                                    "filesCount": model.get("filesCount"),
-                                    "has_stls": "stls" in model,
-                                    "stls_count": len(model.get("stls", []) or []),
-                                    "previewFile": model.get("previewFile"),
-                                    "pdfFilePath": model.get("pdfFilePath"),
-                                    "all_keys": sorted(model.keys()),
-                                }
-                                break
-                    except Exception:
-                        pass
-
-        # Test /files page
-        files_result = await crawler.fetch(f"https://www.printables.com/model/{source_model_id}/files")
-        files_page_info = {
-            "status": files_result.data.status_code if files_result.success else "failed",
-            "length": len(files_result.data.text) if files_result.success else 0,
-        }
-
-        # Test GraphQL
-        gql_files = await crawler._graphql_files(source_model_id)
+        # Test download link mutation
+        download_links = []
+        if stl_items:
+            download_links = crawler._get_download_links(source_model_id, stl_items[:2])
 
         # Test full extraction
         all_files = await crawler.get_model_files(source_model_id)
 
         return {
-            "model_page": page_info,
-            "svelte_data": svelte_info,
-            "files_page": files_page_info,
-            "graphql_files": gql_files,
+            "stl_items": stl_items,
+            "download_links": download_links,
             "extracted_files": all_files,
         }
     finally:
