@@ -1,23 +1,31 @@
 #!/bin/bash
-# One-command deploy for pipplework
-# Run on server: curl -sL https://raw.githubusercontent.com/ucarcompany/pipplework-deploy/main/deploy.sh | bash
+# =============================================================
+# Pipplework — Quick Deploy / Update Script
+# Run on the server: bash deploy.sh
+# =============================================================
 set -e
-cd /opt/pipplework
-echo '=== Downloading updated files ==='
-curl -sL https://raw.githubusercontent.com/ucarcompany/pipplework-deploy/main/backend/main.py -o backend/main.py
-curl -sL https://raw.githubusercontent.com/ucarcompany/pipplework-deploy/main/backend/crawler/printables.py -o backend/crawler/printables.py
-echo '=== Files updated ==='
-echo '=== Removing old DB for schema changes ==='
-rm -f /opt/pipplework/data/pipeline.db
-echo '=== Restarting service ==='
+
+APP_DIR="/opt/pipplework"
+REPO="https://github.com/ucarcompany/pipplework-deploy.git"
+BRANCH="main"
+
+echo "===> Pulling latest code from GitHub..."
+if [ -d "$APP_DIR/.deploy-repo" ]; then
+    cd "$APP_DIR/.deploy-repo" && git pull --ff-only origin "$BRANCH"
+else
+    git clone --depth 1 -b "$BRANCH" "$REPO" "$APP_DIR/.deploy-repo"
+fi
+
+echo "===> Copying files..."
+cp -r "$APP_DIR/.deploy-repo/backend/"* "$APP_DIR/backend/"
+cp -r "$APP_DIR/.deploy-repo/frontend/"* "$APP_DIR/frontend/"
+
+echo "===> Restarting service..."
 systemctl restart pipplework
 sleep 3
-echo "Service status: $(systemctl is-active pipplework)"
-echo '=== Checking API ==='
+systemctl is-active pipplework
+
+echo "===> Checking API..."
 curl -s http://127.0.0.1:9800/api/status
-echo ''
-echo '=== Checking recent logs ==='
-journalctl -u pipplework -n 10 --no-pager
-echo '=== Unbanning all IPs from fail2ban ==='
-fail2ban-client set sshd unbanall 2>/dev/null || true
-echo '=== Deploy complete ==='
+echo ""
+echo "===> Deploy complete!"
